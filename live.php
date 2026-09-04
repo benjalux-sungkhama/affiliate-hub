@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/automation.php';
 require_login();
 $u = uid();
 $pdo = db();
@@ -19,6 +20,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             trim($_POST['notes'] ?? '') ?: null,
         ]);
         flash('บันทึกรอบไลฟ์แล้ว');
+        // ทริกเกอร์ live.ended — เมื่อบันทึกรอบไลฟ์ที่มีเวลาจบแล้ว
+        if (($_POST['ended_at'] ?? '') !== '') {
+            automation_dispatch_event($pdo, $u, 'live.ended', [
+                'live.title'   => trim($_POST['title'] ?? ''),
+                'time.hour'    => (int)date('G'),
+                'product.name' => 'สรุปไลฟ์: ' . trim($_POST['title'] ?? ''),
+                'product.usp'  => 'ยอดขายไลฟ์ ฿' . money((float)($_POST['total_sales'] ?? 0)),
+                'product.target' => 'ผู้ชมไลฟ์',
+                'cta'          => 'รอไลฟ์รอบหน้า กดติดตามเลย',
+            ]);
+        }
     } elseif ($action === 'delete') {
         $pdo->prepare('DELETE FROM live_sessions WHERE id=? AND user_id=?')->execute([(int)$_POST['id'], $u]);
         flash('ลบรอบไลฟ์แล้ว');

@@ -27,6 +27,10 @@ git clone <repo-url> affiliatehub
    (ไฟล์นี้สร้างฐานข้อมูล `affiliatehub` + ทุกตารางให้เอง ด้วย `utf8mb4_unicode_ci`)
 3. Import ต่อด้วย `sql/seed.sql` (แพลตฟอร์ม + แอดมิน + Access Code แรก + สูตร seed)
 
+> ฐานข้อมูลใหม่มีตารางระบบอัตโนมัติอยู่ใน `schema.sql` แล้ว
+> ถ้าเป็นฐานข้อมูลเดิมที่ลงก่อนมีฟีเจอร์นี้ ให้ Import เพิ่ม `sql/automation.sql`
+> และตั้ง cron `cron/automation_worker.php` (ดู `docs/automation-rules.md`)
+
 ## Phase 4 — ตั้งค่า
 เปิด `config/config.php` แล้วตรวจให้ตรงกับ XAMPP (ปกติค่า default ใช้ได้เลย):
 

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/automation.php';
 require_login();
 $u = uid();
 $pdo = db();
@@ -69,6 +70,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $pdo->commit();
             flash('สร้างคำสั่งซื้อ ' . $code . ' แล้ว (กำไร ฿' . money($profit) . ')');
+            // ทริกเกอร์ order.milestone — ยอดสั่งซื้อครบทุก 10 ออเดอร์
+            $cnt = $pdo->prepare('SELECT COUNT(*) FROM orders WHERE user_id=?');
+            $cnt->execute([$u]);
+            $orderCount = (int)$cnt->fetchColumn();
+            if ($orderCount > 0 && $orderCount % 10 === 0) {
+                automation_dispatch_event($pdo, $u, 'order.milestone', [
+                    'order.count'  => $orderCount,
+                    'time.hour'    => (int)date('G'),
+                    'product.name' => 'ร้านของเรา',
+                    'product.usp'  => 'ยอดสั่งซื้อทะลุ ' . $orderCount . ' ออเดอร์แล้ว 🎉',
+                    'product.target' => 'ลูกค้าทุกคน',
+                    'cta'          => 'สั่งเลยวันนี้',
+                ]);
+            }
         } catch (Throwable $ex) {
             $pdo->rollBack();
             flash('สร้างไม่สำเร็จ: ' . $ex->getMessage(), 'err');

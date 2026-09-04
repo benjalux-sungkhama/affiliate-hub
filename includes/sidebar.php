@@ -11,6 +11,7 @@ $nav = [
         ['formulas', 'formulas.php', '📚 คลังสูตรของฉัน'],
         ['posts', 'posts.php', '📝 สร้าง & จัดคิวโพสต์'],
         ['analytics', 'analytics.php', '📈 วิเคราะห์ & แนะนำ Boost'],
+        ['automation', 'automation.php', '⚡ ระบบอัตโนมัติ'],
     ],
     'การจัดการ' => [
         ['live', 'live.php', '📡 ไลฟ์สด'],

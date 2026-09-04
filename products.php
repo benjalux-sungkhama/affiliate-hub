@@ -1,7 +1,10 @@
 <?php
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/automation.php';
 require_login();
 $u = uid();
+
+$LOW_STOCK = 10;   // เกณฑ์สต๊อกต่ำสำหรับทริกเกอร์ product.low_stock
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
@@ -20,18 +23,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             trim($_POST['name'] ?? ''), trim($_POST['sku'] ?? '') ?: null, $catId,
             (float)($_POST['price'] ?? 0), (float)($_POST['cost'] ?? 0), (int)($_POST['stock'] ?? 0),
         ];
+        $newPrice = (float)($_POST['price'] ?? 0);
+        $newStock = (int)($_POST['stock'] ?? 0);
         if ($id) {
+            // ค่าเดิมไว้เทียบทริกเกอร์
+            $old = db()->prepare('SELECT price,stock FROM products WHERE id=? AND user_id=?');
+            $old->execute([$id, $u]);
+            $prev = $old->fetch() ?: ['price' => $newPrice, 'stock' => $newStock];
             $st = db()->prepare(
                 'UPDATE products SET name=?,sku=?,category_id=?,price=?,cost=?,stock=? WHERE id=? AND user_id=?'
             );
             $st->execute(array_merge($data, [$id, $u]));
             flash('บันทึกสินค้าแล้ว');
+            // ทริกเกอร์เหตุการณ์
+            $ctx = automation_product_context(automation_fetch_product(db(), $id, $u));
+            if ((float)$prev['price'] !== $newPrice) {
+                automation_dispatch_event(db(), $u, 'product.price_changed', $ctx);
+            }
+            if ((int)$prev['stock'] >= $LOW_STOCK && $newStock < $LOW_STOCK) {
+                automation_dispatch_event(db(), $u, 'product.low_stock', $ctx);
+            }
+            if ((int)$prev['stock'] <= 0 && $newStock > 0) {
+                automation_dispatch_event(db(), $u, 'product.restocked', $ctx);
+            }
         } else {
             $st = db()->prepare(
                 'INSERT INTO products (name,sku,category_id,price,cost,stock,user_id) VALUES (?,?,?,?,?,?,?)'
             );
             $st->execute(array_merge($data, [$u]));
+            $newId = (int)db()->lastInsertId();
             flash('เพิ่มสินค้าแล้ว');
+            $ctx = automation_product_context(automation_fetch_product(db(), $newId, $u));
+            automation_dispatch_event(db(), $u, 'product.created', $ctx);
+            if ($newStock < $LOW_STOCK) {
+                automation_dispatch_event(db(), $u, 'product.low_stock', $ctx);
+            }
         }
     } elseif ($action === 'delete') {
         $st = db()->prepare('DELETE FROM products WHERE id=? AND user_id=?');
