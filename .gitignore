@@ -1,0 +1,16 @@
+# PHP / local
+/vendor/
+*.log
+.DS_Store
+Thumbs.db
+
+# local config overrides (คัดลอกจาก config/config.php แล้วแก้เฉพาะเครื่อง)
+/config/config.local.php
+
+# uploads (ถ้ามีในอนาคต)
+/uploads/*
+!/uploads/.gitkeep
+
+# automation runtime files
+/cron/automation.lock
+/cron/*.log
