@@ -8,11 +8,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     if ($action === 'connect') {
         $st = db()->prepare(
-            'INSERT INTO platform_accounts (user_id,platform_id,account_name,external_id) VALUES (?,?,?,?)'
+            'INSERT INTO platform_accounts (user_id,platform_id,account_name,external_id,access_token) VALUES (?,?,?,?,?)'
         );
         $st->execute([
             $u, (int)$_POST['platform_id'],
             trim($_POST['account_name'] ?? ''), trim($_POST['external_id'] ?? '') ?: null,
+            trim($_POST['access_token'] ?? '') ?: null,
         ]);
         flash('เชื่อมบัญชีแล้ว');
     } elseif ($action === 'disconnect') {
@@ -91,12 +92,21 @@ include __DIR__ . '/includes/header.php';
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="connect">
             <input type="hidden" name="platform_id" value="<?= (int)$pf['id'] ?>">
-            <div style="flex:1;min-width:160px">
+            <div style="flex:1;min-width:150px">
                 <label style="margin-top:0">ชื่อเพจ/บัญชี</label>
                 <input name="account_name" required placeholder="เช่น ร้านของฉัน">
             </div>
+            <div style="flex:1;min-width:130px">
+                <label style="margin-top:0">Page/Account ID</label>
+                <input name="external_id" placeholder="สำหรับโพสต์อัตโนมัติ">
+            </div>
+            <div style="flex:1;min-width:150px">
+                <label style="margin-top:0">Access Token</label>
+                <input name="access_token" placeholder="ใส่เมื่อใช้โหมด live">
+            </div>
             <button class="btn btn-primary">+ เชื่อมบัญชี</button>
         </form>
+        <p class="hint" style="margin-top:6px">Page ID + Access Token ใส่เมื่อจะเปิด automation โหมด <b>live</b> (Facebook ต้องมีสิทธิ์ <code>pages_manage_posts</code>)</p>
     </div>
 <?php endforeach; ?>
 </div>

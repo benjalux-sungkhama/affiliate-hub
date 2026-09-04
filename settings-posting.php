@@ -23,9 +23,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'toggle') {
         $st = db()->prepare('UPDATE post_schedules SET is_active=1-is_active WHERE id=? AND user_id=?');
         $st->execute([(int)$_POST['id'], $u]);
+    } elseif ($action === 'automation') {
+        $mode = in_array($_POST['automation'] ?? 'off', ['off', 'simulate', 'live'], true) ? $_POST['automation'] : 'off';
+        set_setting($u, 'automation', $mode);
+        flash('บันทึกโหมด automation แล้ว: ' . $mode);
     }
     redirect('settings-posting.php');
 }
+
+$automation = get_setting($u, 'automation', 'off');
 
 $platforms = db()->query('SELECT * FROM platforms ORDER BY id')->fetchAll();
 $st = db()->prepare(
@@ -71,11 +77,28 @@ include __DIR__ . '/includes/header.php';
         </form>
     </div>
     <div class="card">
-        <h3>คำแนะนำเวลาโพสต์</h3>
-        <p class="muted">ช่วงเข้าถึงสูงของไทยโดยทั่วไป: <b>11:30–13:00</b> และ <b>18:00–21:00</b>
-            ตั้งช่วงเวลาให้ตรงกลุ่มเป้าหมายแล้วระบบจะจัดคิวโพสต์ตามนี้</p>
-        <p class="muted">ดูช่วงเวลาที่ได้ผลจริงของคุณได้ที่เมนู <b>วิเคราะห์ & แนะนำ Boost</b></p>
+        <h3>⚙️ ระบบเผยแพร่อัตโนมัติ (Automation)</h3>
+        <p class="muted">เมื่อเปิด ตัวรันเบื้องหลังจะหยิบโพสต์สถานะ <b>"เข้าคิว"</b> ที่ถึงเวลา มาเผยแพร่ให้เอง
+            (ต้องตั้ง Windows Task Scheduler ให้รัน <code>cron/scheduler.php</code> — ดู <code>docs/AUTOMATION.md</code>)</p>
+        <form method="post">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="automation">
+            <label>โหมด</label>
+            <select name="automation">
+                <option value="off" <?= $automation === 'off' ? 'selected' : '' ?>>ปิด — กดเผยแพร่เองในหน้าโพสต์</option>
+                <option value="simulate" <?= $automation === 'simulate' ? 'selected' : '' ?>>ทดสอบ (simulate) — เดินคิวอัตโนมัติ แต่ไม่ยิง API จริง</option>
+                <option value="live" <?= $automation === 'live' ? 'selected' : '' ?>>ใช้งานจริง (live) — ยิง API แพลตฟอร์มจริง (ต้องมี Access Token)</option>
+            </select>
+            <p class="hint">โหมด live ต้องเชื่อมบัญชีพร้อมใส่ Page ID + Access Token ที่หน้า <b>แพลตฟอร์ม & บัญชี</b> ก่อน</p>
+            <button class="btn btn-primary" style="margin-top:14px">บันทึกโหมด</button>
+        </form>
     </div>
+</div>
+
+<div class="card" style="margin-top:18px">
+    <h3>คำแนะนำเวลาโพสต์</h3>
+    <p class="muted">ช่วงเข้าถึงสูงของไทยโดยทั่วไป: <b>11:30–13:00</b> และ <b>18:00–21:00</b>
+        ตั้งช่วงเวลาให้ตรงกลุ่มเป้าหมายแล้วจัดคิวโพสต์ตามนี้ · ดูช่วงเวลาที่ได้ผลจริงที่เมนู <b>วิเคราะห์ & แนะนำ Boost</b></p>
 </div>
 
 <div class="table-wrap" style="margin-top:18px">
