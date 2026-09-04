@@ -10,3 +10,7 @@ Thumbs.db
 # uploads (ถ้ามีในอนาคต)
 /uploads/*
 !/uploads/.gitkeep
+
+# automation runtime files
+/cron/automation.lock
+/cron/*.log
