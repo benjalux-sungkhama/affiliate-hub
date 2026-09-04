@@ -16,7 +16,6 @@ $formulas = $fs->fetchAll();
 
 $selFormulaId = (int)($_GET['formula'] ?? $_POST['formula_id'] ?? 0);
 if (!$selFormulaId && $formulas) {
-    // ถ้าไม่ได้เลือก ใช้สูตรค่าเริ่มต้นตัวแรก
     $selFormulaId = (int)$formulas[0]['id'];
 }
 
@@ -39,25 +38,38 @@ $vars = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'generate' && $formula) {
     csrf_check();
+
+    // ---- ช่องเทมเพลต Storyboard มินิมอล 10 วินาที (ตามสเปก) ----
+    $tpl = [
+        'product_info' => trim($_POST['product_info'] ?? ''),   // ข้อมูลสินค้า
+        'concept'      => trim($_POST['concept'] ?? ''),        // แนวคิดหลัก
+        'character'    => trim($_POST['character'] ?? ''),      // ตัวละคร
+        'overlay'      => trim($_POST['overlay'] ?? ''),        // Text Overlay
+        'audio'        => trim($_POST['audio'] ?? ''),          // เสียง
+    ];
+
     // เติมค่าจากสินค้าที่เลือก
     $pid = (int)($_POST['product_id'] ?? 0);
     if ($pid) {
         foreach ($products as $p) {
             if ((int)$p['id'] === $pid) {
-                $vars['product_name'] = $vars['product_name'] ?? $p['name'];
-                $vars['price'] = $vars['price'] ?? (string)money($p['price']);
+                $vars['product_name'] = $p['name'];
+                $vars['price'] = (string)money($p['price']);
+                if ($tpl['product_info'] === '') {
+                    $tpl['product_info'] = $p['name'] . ' ราคา ' . money($p['price']) . ' บาท';
+                }
                 break;
             }
         }
     }
-    // ค่าที่กรอกมาเอง
+    // ตัวแปร {{ }} ที่กรอกเอง
     foreach (['product_name', 'price', 'usp', 'target', 'cta', 'platform'] as $k) {
         if (trim($_POST[$k] ?? '') !== '') {
             $vars[$k] = trim($_POST[$k]);
         }
     }
 
-    // รวมข้อความสูตรทั้งหมดเพื่อตรวจตัวแปรที่ขาด
+    // ตรวจตัวแปร {{ }} ที่ยังไม่ถูกเติม
     $allText = $formula['name'] . ' ' . $formula['notes'];
     foreach ($scenes as $s) {
         $allText .= ' ' . $s['description'] . ' ' . $s['overlay_text'];
@@ -65,51 +77,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'gener
     $missing = missing_variables($allText, $vars);
 
     if (!$missing) {
-        // สร้าง storyboard + caption
+        // ---- ประกอบ Storyboard 6 ซีน ----
         $lines = [];
         $lines[] = '🎬 ' . fill_variables($formula['name'], $vars)
             . ' (' . (int)$formula['total_seconds'] . ' วินาที · ' . count($scenes) . ' ซีน)';
+        if ($tpl['concept'] !== '')      { $lines[] = '💡 แนวคิดหลัก: ' . $tpl['concept']; }
+        if ($tpl['product_info'] !== '') { $lines[] = '📦 ข้อมูลสินค้า: ' . $tpl['product_info']; }
+        if ($tpl['character'] !== '')    { $lines[] = '🧑 ตัวละคร: ' . $tpl['character']; }
+        if ($tpl['audio'] !== '')        { $lines[] = '🎵 เสียง: ' . $tpl['audio']; }
+        elseif ($formula['audio_style']) { $lines[] = '🎵 เสียง: ' . $formula['audio_style']; }
         $lines[] = '';
+
         foreach ($scenes as $s) {
             $lines[] = sprintf(
                 'ซีน %d [%.1f–%.1f วิ] %s',
                 $s['seq'], $s['time_from'], $s['time_to'], fill_variables($s['description'] ?? '', $vars)
             );
             $extra = [];
-            if ($s['camera_angle']) {
-                $extra[] = '📷 ' . $s['camera_angle'];
-            }
-            if ($s['lighting']) {
-                $extra[] = '💡 ' . $s['lighting'];
-            }
-            if ($s['overlay_text']) {
-                $extra[] = '🅰️ ' . fill_variables($s['overlay_text'], $vars);
-            }
-            if ($extra) {
-                $lines[] = '   ' . implode('  ·  ', $extra);
-            }
+            if ($s['camera_angle']) { $extra[] = '📷 ' . $s['camera_angle']; }
+            if ($s['lighting'])     { $extra[] = '💡 ' . $s['lighting']; }
+            // Text Overlay: ใช้ค่าที่กรอกในเทมเพลตก่อน ถ้าไม่มีใช้ของซีน
+            $ov = $tpl['overlay'] !== '' ? $tpl['overlay'] : ($s['overlay_text'] ?? '');
+            if ($ov) { $extra[] = '🅰️ ' . fill_variables($ov, $vars); }
+            if ($tpl['character'] !== '') { $extra[] = '🧑 ' . $tpl['character']; }
+            if ($extra) { $lines[] = '   ' . implode('  ·  ', $extra); }
         }
         $storyboard = implode("\n", $lines);
+
+        // ---- แคปชั่น ----
         $caption = sprintf(
             "%s ✨\n%s\n📌 %s | ราคา %s บาท\n👉 %s",
-            $vars['product_name'] ?? 'สินค้าใหม่',
-            $vars['usp'] ?? '',
+            $vars['product_name'] ?? ($tpl['product_info'] ?: 'สินค้าใหม่'),
+            $tpl['concept'] ?: ($vars['usp'] ?? ''),
             $vars['target'] ?? 'ทุกคน',
             $vars['price'] ?? '-',
             $vars['cta'] ?? 'ทักแชทสั่งเลย!'
         );
 
         // บันทึกลง ai_contents + usage
+        $promptJson = json_encode(['vars' => $vars, 'template' => $tpl], JSON_UNESCAPED_UNICODE);
         $ins = $pdo->prepare(
             'INSERT INTO ai_contents (user_id,product_id,formula_id,prompt,caption,storyboard) VALUES (?,?,?,?,?,?)'
         );
-        $ins->execute([$u, $pid ?: null, $formula['id'], json_encode($vars, JSON_UNESCAPED_UNICODE), $caption, $storyboard]);
-        $usg = $pdo->prepare(
-            'INSERT INTO content_formula_usages (formula_id,user_id,product_id) VALUES (?,?,?)'
-        );
+        $ins->execute([$u, $pid ?: null, $formula['id'], $promptJson, $caption, $storyboard]);
+        $usg = $pdo->prepare('INSERT INTO content_formula_usages (formula_id,user_id,product_id) VALUES (?,?,?)');
         $usg->execute([$formula['id'], $u, $pid ?: null]);
 
-        $result = ['storyboard' => $storyboard, 'caption' => $caption, 'vars' => $vars];
+        $result = ['storyboard' => $storyboard, 'caption' => $caption];
     }
 }
 
@@ -124,8 +138,8 @@ include __DIR__ . '/includes/header.php';
 
 <div class="grid grid-2" style="align-items:start">
     <div class="card">
-        <h3>Storyboard มินิมอล 10 วินาที</h3>
-        <p class="muted">เลือกสูตรจากคลัง เลือกสินค้า แล้วเติมข้อมูล ระบบจะเติมตัวแปร <code>{{ }}</code> ให้อัตโนมัติ</p>
+        <h3>เทมเพลต Storyboard มินิมอล 10 วินาที</h3>
+        <p class="muted">6 ซีน ซีนละ 1.5–2 วินาที — เลือกสูตร + สินค้า แล้วกรอกช่องด้านล่าง ระบบเติมตัวแปร <code>{{ }}</code> ให้อัตโนมัติ</p>
         <form method="post">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="generate">
@@ -149,12 +163,20 @@ include __DIR__ . '/includes/header.php';
                 <?php endforeach; ?>
             </select>
 
-            <?php if ($missing): ?>
-                <div class="alert alert-info" style="margin-top:14px">
-                    ต้องเติมตัวแปรเพิ่ม: <b><?= e(implode(', ', array_map(fn($m) => '{{' . $m . '}}', $missing))) ?></b>
-                </div>
-            <?php endif; ?>
+            <!-- ช่องเทมเพลตตามสเปก -->
+            <label>ข้อมูลสินค้า</label>
+            <textarea name="product_info" placeholder="รายละเอียดสินค้า จุดเด่น สรรพคุณ"><?= e($_POST['product_info'] ?? '') ?></textarea>
+            <div class="form-row">
+                <div><label>แนวคิดหลัก</label><input name="concept" value="<?= e($_POST['concept'] ?? '') ?>" placeholder="ธีม/มุมเล่าของคลิป"></div>
+                <div><label>ตัวละคร</label><input name="character" value="<?= e($_POST['character'] ?? '') ?>" placeholder="เช่น รีวิวเวอร์สาว, พ่อบ้าน"></div>
+            </div>
+            <div class="form-row">
+                <div><label>Text Overlay</label><input name="overlay" value="<?= e($_POST['overlay'] ?? '') ?>" placeholder="ข้อความบนจอ (เว้นว่าง = ใช้ของแต่ละซีน)"></div>
+                <div><label>เสียง</label><input name="audio" value="<?= e($_POST['audio'] ?? '') ?>" placeholder="เพลง/เสียงพากย์/ASMR"></div>
+            </div>
 
+            <hr style="margin:16px 0;border:0;border-top:1px solid var(--line)">
+            <p class="muted" style="margin:0 0 6px">ตัวแปรสำหรับ <code>{{ }}</code> ในสูตร</p>
             <div class="form-row">
                 <div><label>ชื่อสินค้า {{product_name}}</label><input name="product_name" value="<?= e($_POST['product_name'] ?? '') ?>"></div>
                 <div><label>ราคา {{price}}</label><input name="price" value="<?= e($_POST['price'] ?? '') ?>"></div>
@@ -167,6 +189,12 @@ include __DIR__ . '/includes/header.php';
                 <div><label>CTA {{cta}}</label><input name="cta" value="<?= e($_POST['cta'] ?? '') ?>" placeholder="เช่น ทักแชทรับส่วนลด"></div>
                 <div><label>แพลตฟอร์ม {{platform}}</label><input name="platform" value="<?= e($_POST['platform'] ?? '') ?>"></div>
             </div>
+
+            <?php if ($missing): ?>
+                <div class="alert alert-info" style="margin-top:14px">
+                    ต้องเติมตัวแปรเพิ่ม: <b><?= e(implode(', ', array_map(fn($m) => '{{' . $m . '}}', $missing))) ?></b>
+                </div>
+            <?php endif; ?>
             <button class="btn btn-primary" style="margin-top:16px" <?= !$formula ? 'disabled' : '' ?>>สร้างคอนเทนต์</button>
         </form>
     </div>
